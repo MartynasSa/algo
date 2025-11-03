@@ -1,6 +1,5 @@
 name: Deploy Lambda
 
-# Trigger on push to main branch
 on:
   push:
     branches:
@@ -11,38 +10,32 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout the repository
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      # 2. Setup Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      # 3. Install dependencies into 'package' folder
       - name: Install dependencies
         working-directory: volatility_vibes/forward-volatility-calculator/Deployment
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -t package
 
-      # 4. Package Lambda (dependencies + lambda_function.py)
       - name: Package Lambda
         working-directory: volatility_vibes/forward-volatility-calculator/Deployment
         run: |
-          # Zip dependencies and lambda_function.py together
           zip -r deployment.zip lambda_function.py package
 
-      # 5. Deploy to AWS Lambda
       - name: Deploy to AWS Lambda
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: eu-central-1  # change to your Lambda region
+          AWS_REGION: eu-central-1
         run: |
           aws lambda update-function-code \
-            --function-name my-lambda-function \
+            --function-name VolatilityArbitrage \
             --zip-file fileb://volatility_vibes/forward-volatility-calculator/Deployment/deployment.zip \
             --region $AWS_REGION
