@@ -1,0 +1,44 @@
+name: Deploy Lambda
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        working-directory: volatility_vibes/forward-volatility-calculator/Deployment
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -t package
+
+      - name: Package Lambda
+        working-directory: volatility_vibes/forward-volatility-calculator/Deployment
+        run: |
+          cd package
+          zip -r ../deployment.zip .
+          cd ..
+          zip -g deployment.zip lambda_function.py  # include your Lambda entrypoint
+
+      - name: Deploy to AWS Lambda
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: eu-central-1  # replace with your region
+        run: |
+          aws lambda update-function-code \
+            --function-name my-lambda-function \
+            --zip-file fileb://volatility_vibes/forward-volatility-calculator/Deployment/deployment.zip \
+            --region $AWS_REGION
