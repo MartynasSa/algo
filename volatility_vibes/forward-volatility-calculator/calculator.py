@@ -1,6 +1,6 @@
 import math
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox 
 
 
 class ForwardVolApp(tk.Tk):
