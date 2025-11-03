@@ -9,6 +9,7 @@ from io import StringIO
 import warnings
 import time
 import re
+import json
 try:
     from bs4 import BeautifulSoup
     BEAUTIFULSOUP_AVAILABLE = True
@@ -529,112 +530,145 @@ def process_stock(symbol: str, api_token: str) -> Optional[Dict]:
 # In[46]:
 
 
-# Get S&P 500 symbols
-print("Fetching S&P 500 stock symbols...")
-sp500_symbols = get_sp500_symbols()
-print(f"Found {len(sp500_symbols)} symbols")
-print(f"\nProcessing stocks... (this may take a while)")
-print("=" * 80)
+def run_analysis():
+    """Main function to run the S&P 500 forward factor analysis."""
+    # Get S&P 500 symbols
+    print("Fetching S&P 500 stock symbols...")
+    sp500_symbols = get_sp500_symbols()
+    print(f"Found {len(sp500_symbols)} symbols")
+    print(f"\nProcessing stocks... (this may take a while)")
+    print("=" * 80)
 
+    # Process all stocks with optimized timing
+    results = []
+    failed = 0
+    error_counts = {}  # Track different types of errors
+    start_time = time.time()
 
-# In[47]:
+    print(f"\n{'='*80}")
+    print("Starting processing of all S&P 500 stocks...\n")
+    print(f"{'='*80}\n")
 
-
-# Process all stocks with optimized timing
-results = []
-failed = 0
-error_counts = {}  # Track different types of errors
-start_time = time.time()
-
-print(f"\n{'='*80}")
-print("Starting processing of all S&P 500 stocks...\n")
-print(f"{'='*80}\n")
-
-# Process all S&P 500 stocks
-test_symbols = sp500_symbols
-for i, symbol in enumerate(test_symbols, 1):
-    try:
-        result = process_stock(symbol, TRADIER_API_TOKEN)
-        if result:
-            results.append(result)
-        else:
+    # Process all S&P 500 stocks
+    test_symbols = sp500_symbols
+    for i, symbol in enumerate(test_symbols, 1):
+        try:
+            result = process_stock(symbol, TRADIER_API_TOKEN)
+            if result:
+                results.append(result)
+            else:
+                failed += 1
+                error_counts['no_result'] = error_counts.get('no_result', 0) + 1
+        except Exception as e:
             failed += 1
-            error_counts['no_result'] = error_counts.get('no_result', 0) + 1
-    except Exception as e:
-        failed += 1
-        error_type = type(e).__name__
-        error_counts[error_type] = error_counts.get(error_type, 0) + 1
-        continue
+            error_type = type(e).__name__
+            error_counts[error_type] = error_counts.get(error_type, 0) + 1
+            continue
 
-    # Progress reporting every 30 stocks
-    if i % 30 == 0 or i == len(test_symbols):
-        elapsed = time.time() - start_time
-        rate = i / elapsed if elapsed > 0 else 0
-        print(f"Processed {i}/{len(test_symbols)} stocks... ({len(results)} successful, {failed} failed)")
-        print(f"  Rate: {rate:.1f} stocks/sec")
+        # Progress reporting every 30 stocks
+        if i % 30 == 0 or i == len(test_symbols):
+            elapsed = time.time() - start_time
+            rate = i / elapsed if elapsed > 0 else 0
+            print(f"Processed {i}/{len(test_symbols)} stocks... ({len(results)} successful, {failed} failed)")
+            print(f"  Rate: {rate:.1f} stocks/sec")
 
-    # Small delay to avoid overwhelming the API
-    time.sleep(0.1)
+        # Small delay to avoid overwhelming the API
+        time.sleep(0.1)
 
-total_time = time.time() - start_time
-print(f"\n{'='*80}")
-print(f"Completed in {total_time/60:.1f} minutes")
-print(f"  Successful: {len(results)}")
-print(f"  Failed: {failed}")
-print(f"  Success rate: {len(results)/(len(results)+failed)*100:.1f}%" if (len(results)+failed) > 0 else "  Success rate: 0%")
+    total_time = time.time() - start_time
+    print(f"\n{'='*80}")
+    print(f"Completed in {total_time/60:.1f} minutes")
+    print(f"  Successful: {len(results)}")
+    print(f"  Failed: {failed}")
+    print(f"  Success rate: {len(results)/(len(results)+failed)*100:.1f}%" if (len(results)+failed) > 0 else "  Success rate: 0%")
 
-if error_counts:
-    print(f"\nError breakdown:")
-    for error_type, count in sorted(error_counts.items(), key=lambda x: x[1], reverse=True):
-        print(f"  {error_type}: {count}")
+    if error_counts:
+        print(f"\nError breakdown:")
+        for error_type, count in sorted(error_counts.items(), key=lambda x: x[1], reverse=True):
+            print(f"  {error_type}: {count}")
+
+    # Create DataFrame and sort by Forward Factor (highest first)
+    if results:
+        df = pd.DataFrame(results)
+        df = df.sort_values('Forward_Factor', ascending=False)
+
+        # Reorder columns for better display
+        display_cols = ['Symbol', 'Price', 'Strike']
+        display_cols.extend([
+            'Front_Date', 'Front_DTE', 'Front_IV',
+            'Target_Date', 'Target_DTE', 'Target_IV',
+            'Forward_Factor_Pct'
+        ])
+
+        # Only include columns that exist
+        available_cols = [col for col in display_cols if col in df.columns]
+        df_display = df[available_cols].copy()
+
+        # Rename columns
+        column_mapping = {
+            'Symbol': 'Symbol',
+            'Price': 'Price',
+            'Strike': 'Strike',
+            'Front_Date': 'Front Date',
+            'Front_DTE': 'Front DTE',
+            'Front_IV': 'Front IV (%)',
+            'Target_Date': 'Target Date',
+            'Target_DTE': 'Target DTE',
+            'Target_IV': 'Target IV (%)',
+            'Forward_Factor_Pct': 'Forward Factor (%)',
+            'Forward_Factor': 'Forward Factor'
+        }
+        df_display.columns = [column_mapping.get(col, col) for col in df_display.columns]
+
+        print("\n" + "=" * 80)
+        print("RESULTS - Sorted by Highest Forward Factor")
+        print("=" * 80)
+        print(f"\nTop 20 Stocks:")
+        print(df_display.head(20).to_string(index=False))
+
+        print(f"\n\nAll {len(df_display)} stocks with forward factors:")
+        print(df_display.to_string(index=False))
+        
+        # Send top 20 to Discord after processing completes
+        print("\n" + "=" * 80)
+        print("Sending top 20 results to Discord...")
+        print("=" * 80)
+
+        df_for_discord = pd.DataFrame(results)
+        df_for_discord = df_for_discord.sort_values('Forward_Factor', ascending=False)
+
+        total_processed = len(sp500_symbols)
+        successful = len(results)
+        failed_count = failed
+
+        send_to_discord(DISCORD_WEBHOOK_URL, df_for_discord, total_processed, successful, failed_count)
+        
+        return {
+            'statusCode': 200,
+            'body': {
+                'success': True,
+                'total_processed': total_processed,
+                'successful': successful,
+                'failed': failed_count,
+                'results_count': len(results),
+                'top_20_symbols': df_for_discord.head(20)['Symbol'].tolist()
+            }
+        }
+    else:
+        print("\nNo results found. Check API token and network connection.")
+        return {
+            'statusCode': 200,
+            'body': {
+                'success': False,
+                'message': 'No results found. Check API token and network connection.',
+                'total_processed': len(sp500_symbols),
+                'successful': 0,
+                'failed': failed
+            }
+        }
 
 
 # In[55]:
-
-
-# Create DataFrame and sort by Forward Factor (highest first)
-if results:
-    df = pd.DataFrame(results)
-    df = df.sort_values('Forward_Factor', ascending=False)
-
-    # Reorder columns for better display
-    display_cols = ['Symbol', 'Price', 'Strike']
-    display_cols.extend([
-        'Front_Date', 'Front_DTE', 'Front_IV',
-        'Target_Date', 'Target_DTE', 'Target_IV',
-        'Forward_Factor_Pct'
-    ])
-
-    # Only include columns that exist
-    available_cols = [col for col in display_cols if col in df.columns]
-    df_display = df[available_cols].copy()
-
-    # Rename columns
-    column_mapping = {
-        'Symbol': 'Symbol',
-        'Price': 'Price',
-        'Strike': 'Strike',
-        'Front_Date': 'Front Date',
-        'Front_DTE': 'Front DTE',
-        'Front_IV': 'Front IV (%)',
-        'Target_Date': 'Target Date',
-        'Target_DTE': 'Target DTE',
-        'Target_IV': 'Target IV (%)',
-        'Forward_Factor_Pct': 'Forward Factor (%)',
-        'Forward_Factor': 'Forward Factor'
-    }
-    df_display.columns = [column_mapping.get(col, col) for col in df_display.columns]
-
-    print("\n" + "=" * 80)
-    print("RESULTS - Sorted by Highest Forward Factor")
-    print("=" * 80)
-    print(f"\nTop 20 Stocks:")
-    print(df_display.head(20).to_string(index=False))
-
-    print(f"\n\nAll {len(df_display)} stocks with forward factors:")
-    print(df_display.to_string(index=False))
-else:
-    print("\nNo results found. Check API token and network connection.")
 
 # Send top 20 results to Discord
 def send_to_discord(webhook_url: str, top_results: pd.DataFrame, total_processed: int, successful: int, failed: int):
@@ -740,18 +774,53 @@ def send_to_discord(webhook_url: str, top_results: pd.DataFrame, total_processed
         traceback.print_exc()
         return False
 
-# Send top 20 to Discord after processing completes
-if results:
-    print("\n" + "=" * 80)
-    print("Sending top 20 results to Discord...")
-    print("=" * 80)
 
-    df_for_discord = pd.DataFrame(results)
-    df_for_discord = df_for_discord.sort_values('Forward_Factor', ascending=False)
+def lambda_handler(event, context):
+    """
+    AWS Lambda handler function.
+    
+    Args:
+        event: Lambda event object (can be empty dict for scheduled events)
+        context: Lambda context object
+    
+    Returns:
+        dict: Response with statusCode and body
+    """
+    try:
+        print(f"Lambda function started at {datetime.now().isoformat()}")
+        print(f"Event: {json.dumps(event)}")
+        
+        # Run the analysis
+        result = run_analysis()
+        
+        # Ensure body is JSON serializable
+        if isinstance(result.get('body'), dict):
+            return {
+                'statusCode': result.get('statusCode', 200),
+                'body': json.dumps(result.get('body', {}))
+            }
+        else:
+            return result
+            
+    except Exception as e:
+        error_msg = f"Error in lambda_handler: {type(e).__name__}: {str(e)}"
+        print(error_msg)
+        import traceback
+        traceback.print_exc()
+        
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'success': False,
+                'error': error_msg
+            })
+        }
 
-    total_processed = len(sp500_symbols) if 'sp500_symbols' in globals() else len(results) + failed
-    successful = len(results)
-    failed_count = failed if 'failed' in globals() else 0
 
-    send_to_discord(DISCORD_WEBHOOK_URL, df_for_discord, total_processed, successful, failed_count)
+# For local testing (when run directly, not in Lambda)
+if __name__ == "__main__":
+    result = run_analysis()
+    if isinstance(result, dict) and 'body' in result:
+        print(f"\nExecution completed with status: {result.get('statusCode')}")
+        print(f"Results: {json.dumps(result['body'], indent=2)}")
 

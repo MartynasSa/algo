@@ -27,7 +27,7 @@ jobs:
       - name: Package Lambda
         working-directory: volatility_vibes/forward-volatility-calculator/Deployment
         run: |
-          zip -r deployment.zip lambda_function.py package
+          zip -r deployment.zip stock_report.py package
 
       - name: Deploy to AWS Lambda
         env:
