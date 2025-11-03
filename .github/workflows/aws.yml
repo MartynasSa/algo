@@ -27,15 +27,37 @@ jobs:
       - name: Package Lambda
         working-directory: volatility_vibes/forward-volatility-calculator/Deployment
         run: |
-          zip -r deployment.zip stock_report.py package
+          # Copy dependencies and function code to a staging directory
+          mkdir -p lambda_package
+          cp -r package/* lambda_package/ 2>/dev/null || true
+          cp stock_report.py lambda_package/
+          # Create ZIP from the staging directory (contents will be at root level)
+          cd lambda_package
+          zip -r ../deployment.zip .
+          cd ..
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
 
       - name: Deploy to AWS Lambda
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: us-east-1
+        working-directory: volatility_vibes/forward-volatility-calculator/Deployment
         run: |
           aws lambda update-function-code \
             --function-name VolatilityArbitrage \
-            --zip-file fileb://volatility_vibes/forward-volatility-calculator/Deployment/deployment.zip \
-            --region $AWS_REGION
+            --zip-file fileb://deployment.zip \
+            --region us-east-1
+
+      - name: Verify deployment
+        working-directory: volatility_vibes/forward-volatility-calculator/Deployment
+        run: |
+          echo "Deployment completed successfully!"
+          aws lambda get-function \
+            --function-name VolatilityArbitrage \
+            --region us-east-1 \
+            --query 'Configuration.[FunctionName,LastModified,Runtime,Timeout,MemorySize]' \
+            --output table
+
