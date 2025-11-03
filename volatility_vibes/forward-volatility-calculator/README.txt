@@ -2,7 +2,7 @@ The calculator is FREE to use on Option Quants with NO installation required:
 https://oquants.com/calculators
 
 Join the discord for support with any of this:
-https://discord.gg/krdByJHuHc
+https://discord.gg/krdByJHuHc 
 
 ** Forward-Volatility Calculator **
 
